@@ -6,6 +6,7 @@ Upload photos to Wikimedia Commons
 
 import configparser
 import datetime
+import json
 import pathlib
 import random
 import string
@@ -71,7 +72,11 @@ def get_info(config, exif_info):
     """
 
     if "author_username" in config:
-        config["author"] = f'[[User:{config["author_username"]}|{config["author"]}]]'
+        config[
+            "author_link"
+        ] = f'[[User:{config["author_username"]}|{config["author"]}]]'
+    else:
+        config["author_link"] = config["author"]
     config["desc"] = f'  {{{{en|{config["desc-en"]}}}}}'
     categories = [format_category(cat) for cat in config["category"].split("\n")]
     config["categories"] = "\n".join(categories)
@@ -79,6 +84,7 @@ def get_info(config, exif_info):
         exif_info.datetime_original, "%Y:%m:%d %H:%M:%S"
     )
     config["image_date"] = str(image_date)
+    config["inception"] = "+" + image_date.date().isoformat() + "T00:00:00Z"
     config["lat"] = format_gps(*exif_info.gps_latitude)
     config["long"] = format_gps(*exif_info.gps_longitude)
     config["model"] = exif_info.model
@@ -113,7 +119,7 @@ def upload(site, filename, meta):
   $desc
 |date=$image_date
 |source={{own}}
-|author=$author
+|author=$author_link
 }}
 {{Location|$lat|$long}}
 
@@ -124,6 +130,7 @@ $categories
 """
     description = string.Template(template).substitute(meta)
     summary = "Add photo"
+    print(description)
     bot = UploadRobot(
         filename,
         description=description,
@@ -134,9 +141,192 @@ $categories
     bot.run()
 
 
+def add_structured_data(site, filename, meta):
+    """
+    Add structured data to Wikimedia page
+    """
+
+    page = pywikibot.Page(site, title=page_name(filename), ns=6)
+    media_identifier = "M{}".format(page.pageid)
+
+    data = {
+        "claims": [
+            # Creator
+            {
+                "mainsnak": {"property": "P170", "snaktype": "somevalue"},
+                "qualifiers": {
+                    "P2093": [
+                        {
+                            "datavalue": {"type": "string", "value": meta["author"]},
+                            "property": "P2093",
+                            "snaktype": "value",
+                        }
+                    ],
+                    "P4174": [
+                        {
+                            "datavalue": {
+                                "type": "string",
+                                "value": meta["author_username"],
+                            },
+                            "property": "P4174",
+                            "snaktype": "value",
+                        }
+                    ],
+                    "P2699": [
+                        {
+                            "datavalue": {
+                                "type": "string",
+                                "value": get_author_url(meta["author_username"]),
+                            },
+                            "property": "P2699",
+                            "snaktype": "value",
+                        }
+                    ],
+                },
+                "rank": "normal",
+                "type": "statement",
+            },
+            # Copyright license
+            # Q18199165 = CC-BY-SA-4.0
+            {
+                "mainsnak": {
+                    "datavalue": {
+                        "type": "wikibase-entityid",
+                        "value": {
+                            "entity-type": "item",
+                            "id": "Q18199165",
+                            "numeric-id": 18199165,
+                        },
+                    },
+                    "property": "P275",
+                    "snaktype": "value",
+                },
+                "rank": "normal",
+                "type": "statement",
+            },
+            # Copyright status
+            # Q50423863 = copyrighted
+            {
+                "mainsnak": {
+                    "datavalue": {
+                        "type": "wikibase-entityid",
+                        "value": {
+                            "entity-type": "item",
+                            "id": "Q50423863",
+                            "numeric-id": 50423863,
+                        },
+                    },
+                    "property": "P6216",
+                    "snaktype": "value",
+                },
+                "rank": "normal",
+                "type": "statement",
+            },
+            # Source of file
+            # Original creation by uploader
+            {
+                "mainsnak": {
+                    "datavalue": {
+                        "type": "wikibase-entityid",
+                        "value": {
+                            "entity-type": "item",
+                            "id": "Q66458942",
+                            "numeric-id": 66458942,
+                        },
+                    },
+                    "property": "P7482",
+                    "snaktype": "value",
+                },
+                "rank": "normal",
+                "type": "statement",
+            },
+            # Image captured with
+            {
+                "mainsnak": {
+                    "datavalue": {
+                        "type": "wikibase-entityid",
+                        "value": {
+                            "entity-type": "item",
+                            "id": "Q64015157",
+                            "numeric-id": 64015157,
+                        },
+                    },
+                    "property": "P4082",
+                    "snaktype": "value",
+                },
+                "rank": "normal",
+                "type": "statement",
+            },
+            # GPS coordinates
+            {
+                "mainsnak": {
+                    "datavalue": {
+                        "type": "globecoordinate",
+                        "value": {
+                            "globe": "http://www.wikidata.org/entity/Q2",
+                            "latitude": float(meta["lat"]),
+                            "longitude": float(meta["long"]),
+                            "precision": 1e-06,
+                        },
+                    },
+                    "property": "P1259",
+                    "snaktype": "value",
+                },
+                "rank": "normal",
+                "type": "statement",
+            },
+            # Inception
+            {
+                "mainsnak": {
+                    "datavalue": {
+                        "type": "time",
+                        "value": {
+                            "after": 0,
+                            "before": 0,
+                            "calendarmodel": "http://www.wikidata.org/entity/Q1985727",
+                            "precision": 11,
+                            "time": meta["inception"],
+                            "timezone": 0,
+                        },
+                    },
+                    "property": "P571",
+                    "snaktype": "value",
+                },
+                "rank": "normal",
+                "type": "statement",
+            },
+        ],
+        "labels": {
+            "en": {
+                "language": "en",
+                "value": meta["desc-en"],
+            },
+        },
+    }
+
+    csrf_token = site.tokens["csrf"]
+    payload = {
+        "action": "wbeditentity",
+        "format": "json",
+        "id": media_identifier,
+        "data": json.dumps(data, separators=(",", ":")),
+        "token": csrf_token,
+        "summary": "Add structured data",
+        "bot": False,
+    }
+
+    request = site._simple_request(**payload)
+    try:
+        request.submit()
+    except pywikibot.data.api.APIError as error:
+        print("Got an error from the API, the following request were made:")
+        print(request)
+        print("Error: {}".format(error))
+
+
 def main():
     """
-    Get files and upload them
+    Get files, upload them and add structured data
     """
 
     site = pywikibot.Site("commons", "commons")
@@ -162,6 +352,7 @@ def main():
         exif_info = add_exif(jpg, filename, config[jpg.name])
         meta = get_info(config[jpg.name], exif_info)
         upload(site, filename, meta)
+        add_structured_data(site, filename, meta)
         pathlib.Path(filename).unlink()
         upload_dir.mkdir(exist_ok=True)
         jpg.replace(upload_dir / jpg)
