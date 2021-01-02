@@ -130,7 +130,6 @@ $categories
 """
     description = string.Template(template).substitute(meta)
     summary = "Add photo"
-    print(description)
     bot = UploadRobot(
         filename,
         description=description,
