@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+
+"""
+Upload photos to Wikimedia Commons
+"""
+
+import configparser
+import datetime
+import pathlib
+import random
+import string
+import time
+
+from exif import Image
+import pywikibot
+from pywikibot.specialbots import UploadRobot
+
+
+def get_filename(config):
+    """
+    Get filename from config file
+    """
+
+    filename = config.get("filename", "unknown")
+    if not filename.endswith(".jpg"):
+        filename += ".jpg"
+    filename = filename.replace(" ", "_")
+    return filename
+
+
+def add_exif(jpg, new_name, config):
+    """
+    Add metainfo to EXIF
+    """
+
+    with open(jpg.name, "rb") as image_file:
+        in_image = Image(image_file)
+    in_image.image_description = config["desc-en"]
+    in_image.artist = config["author"]
+    in_image.copyright = "This work is licensed under the Creative Commons Attribution ShareAlike 4.0 International License.  To view a copy of this license, visit https://creativecommons.org/licenses/by-sa/4.0/ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042 USA."
+    with open(new_name, "wb") as new_image_file:
+        new_image_file.write(in_image.get_file())
+    return in_image
+
+
+def format_category(cat):
+    """
+    Format a category
+    """
+
+    cat = cat.replace("_", " ")
+    if cat.startswith("[[Category:"):
+        return cat
+    if cat.startswith("Category:"):
+        return "[[" + cat + "]]"
+    return "[[Category:" + cat + "]]"
+
+
+def format_gps(gps_degree, gps_min, gps_sec):
+    """
+    Format GPS coordinates
+    """
+
+    gps = gps_degree + gps_min / 60 + gps_sec / 3600
+    return f"{gps:.6f}"
+
+
+def get_info(config, exif_info):
+    """
+    Gather information about a photo
+    """
+
+    if "author_username" in config:
+        config["author"] = f'[[User:{config["author_username"]}|{config["author"]}]]'
+    config["desc"] = f'  {{{{en|{config["desc-en"]}}}}}'
+    categories = [format_category(cat) for cat in config["category"].split("\n")]
+    config["categories"] = "\n".join(categories)
+    image_date = datetime.datetime.strptime(
+        exif_info.datetime_original, "%Y:%m:%d %H:%M:%S"
+    )
+    config["image_date"] = str(image_date)
+    config["lat"] = format_gps(*exif_info.gps_latitude)
+    config["long"] = format_gps(*exif_info.gps_longitude)
+    config["model"] = exif_info.model
+    return config
+
+
+def get_author_url(user):
+    """
+    Get URL for Wikimedia Commons user
+    """
+
+    user = user.replace(" ", "_")
+    return f"https://commons.wikimedia.org/wiki/user:{user}"
+
+
+def page_name(filename):
+    """
+    Return page name for filename
+    """
+
+    return f"File:{filename}"
+
+
+def upload(site, filename, meta):
+    """
+    Upload file to site using UploadRobot
+    """
+
+    template = """=={{int:filedesc}}==
+{{Information
+|description=
+  $desc
+|date=$image_date
+|source={{own}}
+|author=$author
+}}
+{{Location|$lat|$long}}
+
+=={{int:license-header}}==
+{{$license}}
+
+$categories
+"""
+    description = string.Template(template).substitute(meta)
+    summary = "Add photo"
+    bot = UploadRobot(
+        filename,
+        description=description,
+        summary=summary,
+        keep_filename=True,
+        target_site=site,
+    )
+    bot.run()
+
+
+def main():
+    """
+    Get files and upload them
+    """
+
+    site = pywikibot.Site("commons", "commons")
+    site.login()
+    site.get_tokens("csrf")  # preload csrf token
+    upload_dir = pathlib.Path("uploaded")
+
+    config = configparser.ConfigParser()
+    config.read("config.ini")
+
+    for jpg in pathlib.Path().glob("*.jpg"):
+        if jpg.name not in config:
+            print(f"Photo {jpg} not in config file")
+            continue
+        license_info = config[jpg.name]["license"]
+        assert license_info in ("cc-by-sa-4.0", "self|cc-by-sa-4.0")
+        filename = get_filename(config[jpg.name])
+        page = pywikibot.Page(site, title=page_name(filename))
+        if page.exists():
+            print(f"Page {page_name(filename)} exists already")
+            continue
+        print(f"Uploading {jpg} as {filename}")
+        exif_info = add_exif(jpg, filename, config[jpg.name])
+        meta = get_info(config[jpg.name], exif_info)
+        upload(site, filename, meta)
+        pathlib.Path(filename).unlink()
+        upload_dir.mkdir(exist_ok=True)
+        jpg.replace(upload_dir / jpg)
+        delay = random.randint(60, 3 * 60)
+        print(f"Sleeping for {delay} seconds")
+        time.sleep(delay)
+
+
+if __name__ == "__main__":
+    main()
