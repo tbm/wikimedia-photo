@@ -71,7 +71,7 @@ def get_info(config, exif_info):
     Gather information about a photo
     """
 
-    if "author_username" in config:
+    if config.getboolean("add_user_link"):
         config[
             "author_link"
         ] = f'[[User:{config["author_username"]}|{config["author"]}]]'
