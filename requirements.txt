@@ -1,0 +1,2 @@
+pywikibot>=5.2.0
+exif>=1.0.4
