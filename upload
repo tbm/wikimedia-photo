@@ -155,6 +155,20 @@ def add_structured_data(site, filename, meta):
             {
                 "mainsnak": {"property": "P170", "snaktype": "somevalue"},
                 "qualifiers": {
+                    "P3831": [
+                        {
+                            "datavalue": {
+                                "type": "wikibase-entityid",
+                                "value": {
+                                    "entity-type": "item",
+                                    "id": "Q33231",
+                                    "numeric-id": 33231,
+                                },
+                            },
+                            "property": "P3831",
+                            "snaktype": "value",
+                        }
+                    ],
                     "P2093": [
                         {
                             "datavalue": {"type": "string", "value": meta["author"]},
