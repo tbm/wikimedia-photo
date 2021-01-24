@@ -79,6 +79,10 @@ def get_info(config, exif_info):
         config["author_link"] = config["author"]
     config["desc"] = f'  {{{{en|{config["desc-en"]}}}}}'
     categories = [format_category(cat) for cat in config["category"].split("\n")]
+    if "user_category" in config:
+        user_category = format_category(config["user_category"])
+        if user_category not in categories:
+            categories.append(user_category)
     config["categories"] = "\n".join(categories)
     image_date = datetime.datetime.strptime(
         exif_info.datetime_original, "%Y:%m:%d %H:%M:%S"
