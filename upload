@@ -360,7 +360,7 @@ def main():
     config = configparser.ConfigParser()
     config.read("config.ini")
 
-    for jpg in pathlib.Path().glob("*.jpg"):
+    for jpg in sorted(pathlib.Path().glob("*.jpg")):
         if jpg.name not in config:
             print(f"Photo {jpg} not in config file")
             continue
