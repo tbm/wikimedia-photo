@@ -71,7 +71,11 @@ def get_info(config, exif_info):
     Gather information about a photo
     """
 
-    model_to_id = {"Pixel 3a": "Q64015157", "Redmi Note 10": "Q105763874"}
+    model_to_id = {
+        "Pixel 3a": "Q64015157",
+        "Redmi Note 10": "Q105763874",
+        "SM-A528B": "Q109341356",
+    }
 
     if config.getboolean("add_user_link"):
         config[
