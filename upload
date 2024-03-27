@@ -73,6 +73,7 @@ def get_info(config, exif_info):
 
     model_to_id = {
         "Pixel 3a": "Q64015157",
+        "Pixel 6a": "Q111973243",
         "Redmi Note 10": "Q105763874",
         "SM-A528B": "Q109341356",
     }
